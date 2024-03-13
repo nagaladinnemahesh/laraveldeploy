@@ -1,0 +1,200 @@
+#!/bin/bash
+
+# Update package lists
+sudo apt update
+sudo apt install nginx -y
+
+# Check available UFW application profiles
+sudo ufw app list
+
+# Allow connections to Nginx HTTP
+sudo ufw allow 'Nginx HTTP'
+
+# Install MySQL server
+sudo apt update
+sudo apt install mysql-server -y
+
+# Run MySQL secure installation
+sudo mysql_secure_installation <<EOF
+
+Y
+2
+y
+y
+y
+y
+EOF
+
+# Install PHP and PHP modules
+sudo apt update
+sudo apt install php8.1-fpm php-mysql -y
+
+# Update package manager cache
+sudo apt update
+
+# Install required packages
+sudo apt install php-cli unzip -y
+
+# Download Composer installer
+cd ~
+curl -sS https://getcomposer.org/installer -o /tmp/composer-setup.php
+
+# Get the SHA-384 hash for verification
+HASH=$(curl -sS https://composer.github.io/installer.sig)
+
+# Verify the downloaded installer
+if [ "$(hash_file='SHA384' /tmp/composer-setup.php)" = "$HASH" ]; then
+    echo "Installer verified"
+else
+    echo "Installer corrupt"
+    rm /tmp/composer-setup.php
+    exit 1
+fi
+
+# Install Composer globally
+sudo php /tmp/composer-setup.php --install-dir=/usr/local/bin --filename=composer
+
+# Test installation
+composer
+
+# Update package manager cache
+sudo apt update
+
+# Install required PHP modules
+sudo apt install php-mbstring php-xml php-bcmath php-curl -y
+
+# Connect to MySQL console
+sudo mysql <<EOF
+
+# Create database
+CREATE DATABASE laravel;
+
+# Create user and grant privileges
+CREATE USER 'mahesh' IDENTIFIED WITH mysql_native_password BY 'Mahesh@123';
+GRANT ALL ON laravel.* TO 'mahesh';
+
+# Exit MySQL console
+exit
+EOF
+
+# Navigate to user's home directory
+cd ~
+
+# Create a directory for Laravel
+sudo mkdir /var/www/laravel
+
+# Set appropriate ownership
+sudo chown -R $USER:$USER /var/www/laravel
+
+# Create and edit the Nginx server block configuration file
+sudo nano /etc/nginx/sites-available/laravel <<EOF
+server {
+    listen 80;
+    server_name _; # Change this to your domain name or IP address
+
+    root /var/www/laravel;
+    index index.html index.htm index.php;
+
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+
+    location ~ \.php$ {
+        include snippets/fastcgi-php.conf;
+        fastcgi_pass unix:/var/run/php/php8.1-fpm.sock;
+    }
+
+    location ~ /\.ht {
+        deny all;
+    }
+}
+EOF
+
+# Create a symbolic link to enable the site
+sudo ln -s /etc/nginx/sites-available/laravel /etc/nginx/sites-enabled/
+
+# Test Nginx configuration
+sudo nginx -t
+
+# Reload Nginx to apply changes
+sudo systemctl reload nginx
+
+# # Create a directory for Laravel
+# sudo mkdir /var/www/laravel
+
+# # Set appropriate ownership
+# sudo chown -R $USER:$USER /var/www/laravel
+
+cd /var/www/laravel
+
+# Clone the Laravel project from Git
+git clone https://github.com/nagaladinnemahesh/laraveldeploy.git laravel
+
+# Navigate into the Laravel project directory
+cd laravel
+
+# Run php artisan
+php artisan
+
+# Define variables
+APP_URL="http://domain_or_IP"
+DB_DATABASE="travellist"
+DB_USERNAME="travellist_user"
+DB_PASSWORD="password"
+
+# Change values in the .env file
+sudo sed -i "s|^APP_URL=.*|APP_URL=$APP_URL|" /path/to/.env
+sudo sed -i "s|^DB_DATABASE=.*|DB_DATABASE=$DB_DATABASE|" /path/to/.env
+sudo sed -i "s|^DB_USERNAME=.*|DB_USERNAME=$DB_USERNAME|" /path/to/.env
+sudo sed -i "s|^DB_PASSWORD=.*|DB_PASSWORD=$DB_PASSWORD|" /path/to/.env
+
+# Change ownership of storage and bootstrap/cache directories
+sudo chown -R www-data:www-data /var/www/laravel/storage
+sudo chown -R www-data:www-data /var/www/laravel/bootstrap/cache
+
+# Create a new Nginx server block configuration file
+sudo nano /etc/nginx/sites-available/travellist <<EOF
+server {
+    listen 80;
+    server_name <ipaddress> # Change this to your domain name or IP address
+    root /var/www/laravel/public;
+
+    add_header X-Frame-Options "SAMEORIGIN";
+    add_header X-XSS-Protection "1; mode=block";
+    add_header X-Content-Type-Options "nosniff";
+
+    index index.html index.htm index.php;
+
+    charset utf-8;
+
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+
+    location = /favicon.ico { access_log off; log_not_found off; }
+    location = /robots.txt  { access_log off; log_not_found off; }
+
+    error_page 404 /index.php;
+
+    location ~ \.php$ {
+        fastcgi_pass unix:/var/run/php/php8.1-fpm.sock;
+        fastcgi_index index.php;
+        fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
+        include fastcgi_params;
+    }
+
+    location ~ /\.(?!well-known).* {
+        deny all;
+    }
+}
+EOF
+
+# Create a symbolic link to enable the site
+# sudo ln -s /etc/nginx/sites-available/laravel /etc/nginx/sites-enabled/
+
+# Test Nginx configuration
+sudo nginx -t
+
+# Reload Nginx to apply changes
+sudo systemctl reload nginx
+
